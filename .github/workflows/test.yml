@@ -6,6 +6,9 @@ name: Test
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   terratest:
     runs-on: ubuntu-latest

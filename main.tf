@@ -38,15 +38,56 @@ locals {
   security_group_ids = var.create_security_group ? [aws_security_group.this[0].id] : [var.security_group_id]
 }
 
-resource "aws_instance" "this" {
+resource "aws_instance" "with_created_security_group" {
   ami                         = data.aws_ami.amazon-linux-2023.id
   instance_type               = var.instance_type
-  count                       = var.instance_count
+  count                       = var.create_security_group ? var.instance_count : 0
   key_name                    = var.key_name
   subnet_id                   = var.subnet_id
   associate_public_ip_address = var.associate_public_ip_address
-  vpc_security_group_ids      = local.security_group_ids
+  vpc_security_group_ids      = [aws_security_group.this[0].id]
+  iam_instance_profile        = var.iam_instance_profile_name
+  ebs_optimized               = var.ebs_optimized
+  monitoring                  = var.enable_detailed_monitoring
   user_data                   = templatefile("${abspath(path.module)}/userdata.sh", { myserver = var.server_name })
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  root_block_device {
+    encrypted   = true
+    volume_type = var.root_volume_type
+  }
+
+  tags = merge(var.common_tags, {
+    Name = var.name
+  })
+}
+
+resource "aws_instance" "with_existing_security_group" {
+  ami                         = data.aws_ami.amazon-linux-2023.id
+  instance_type               = var.instance_type
+  count                       = var.create_security_group ? 0 : var.instance_count
+  key_name                    = var.key_name
+  subnet_id                   = var.subnet_id
+  associate_public_ip_address = var.associate_public_ip_address
+  vpc_security_group_ids      = [var.security_group_id]
+  iam_instance_profile        = var.iam_instance_profile_name
+  ebs_optimized               = var.ebs_optimized
+  monitoring                  = var.enable_detailed_monitoring
+  user_data                   = templatefile("${abspath(path.module)}/userdata.sh", { myserver = var.server_name })
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  root_block_device {
+    encrypted   = true
+    volume_type = var.root_volume_type
+  }
 
   tags = merge(var.common_tags, {
     Name = var.name
@@ -67,6 +108,7 @@ resource "aws_security_group" "this" {
     for_each = var.ingress_ports
     iterator = port
     content {
+      description = "Allow inbound TCP ${port.value}"
       from_port   = port.value
       to_port     = port.value
       protocol    = "tcp"
@@ -74,10 +116,15 @@ resource "aws_security_group" "this" {
     }
   }
 
-  egress {
-    from_port   = 0
-    protocol    = "-1"
-    to_port     = 0
-    cidr_blocks = ["0.0.0.0/0"]
+  dynamic "egress" {
+    for_each = var.egress_rules
+    iterator = rule
+    content {
+      description = rule.value.description
+      from_port   = rule.value.from_port
+      protocol    = rule.value.protocol
+      to_port     = rule.value.to_port
+      cidr_blocks = rule.value.cidr_blocks
+    }
   }
 }

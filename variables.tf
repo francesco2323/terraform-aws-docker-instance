@@ -60,7 +60,7 @@ variable "security_group_id" {
   default     = null
 
   validation {
-    condition     = var.create_security_group || (var.security_group_id != null && length(trimspace(var.security_group_id)) > 0)
+    condition     = var.create_security_group || length(try(trimspace(var.security_group_id), "")) > 0
     error_message = "security_group_id must be set when create_security_group is false."
   }
 }
@@ -80,7 +80,65 @@ variable "subnet_id" {
 variable "associate_public_ip_address" {
   type        = bool
   description = "Whether to associate a public IP address with the instance network interface."
+  default     = false
+}
+
+variable "iam_instance_profile_name" {
+  type        = string
+  description = "IAM instance profile name to attach to the EC2 instances. Set to null to skip attachment."
+  default     = null
+}
+
+variable "ebs_optimized" {
+  type        = bool
+  description = "Whether to launch instances as EBS-optimized."
   default     = true
+}
+
+variable "enable_detailed_monitoring" {
+  type        = bool
+  description = "Whether to enable detailed monitoring on the EC2 instances."
+  default     = true
+}
+
+variable "root_volume_type" {
+  type        = string
+  description = "Root EBS volume type for instances."
+  default     = "gp3"
+}
+
+variable "egress_rules" {
+  type = list(object({
+    description = string
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+  }))
+  description = "Outbound security group rules applied when create_security_group is true."
+  default = [
+    {
+      description = "Allow outbound HTTPS"
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    },
+    {
+      description = "Allow outbound DNS (TCP)"
+      from_port   = 53
+      to_port     = 53
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    },
+    {
+      description = "Allow outbound DNS (UDP)"
+      from_port   = 53
+      to_port     = 53
+      protocol    = "udp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  ]
 }
 
 variable "common_tags" {
