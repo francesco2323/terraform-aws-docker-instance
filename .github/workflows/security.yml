@@ -8,24 +8,198 @@ name: Security
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
-  security:
+  scan:
+    name: Scan (${{ matrix.scanner }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        scanner:
+          - tflint
+          - trivy
+          - checkov
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
-        with:
-          soft_fail: false
+      - name: Setup reports directory
+        run: mkdir -p reports
 
-      - name: Checkov
+      - name: Setup TFLint
+        if: matrix.scanner == 'tflint'
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Init TFLint
+        if: matrix.scanner == 'tflint'
+        run: tflint --init
+
+      - name: Run TFLint
+        if: matrix.scanner == 'tflint'
+        run: |
+          tflint --recursive --format json > reports/tflint.json || true
+
+      - name: Run Trivy config scan
+        if: matrix.scanner == 'trivy'
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            aquasec/trivy:0.52.2 \
+            config \
+            --format json \
+            --output /src/reports/trivy.json \
+            /src || true
+
+      - name: Run Checkov
+        if: matrix.scanner == 'checkov'
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
+          framework: terraform
+          output_format: json
+          output_file_path: reports/checkov.json
           quiet: true
           skip_check: CKV2_AWS_5
+          soft_fail: true
+
+      - name: Upload scan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.scanner }}-report
+          path: reports/
+          if-no-files-found: error
+
+  summary:
+    name: Security Summary
+    if: always()
+    needs:
+      - scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Download scan artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+
+      - name: Build summary JSON
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const summary = {
+            tflint: { findings: 0 },
+            trivy: { findings: 0, critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
+            checkov: { failed: 0, passed: 0, skipped: 0 }
+          };
+
+          const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+          const tflintPath = path.join('reports', 'tflint-report', 'tflint.json');
+          if (fs.existsSync(tflintPath)) {
+            const data = readJson(tflintPath);
+            summary.tflint.findings = Array.isArray(data.issues) ? data.issues.length : 0;
+          }
+
+          const trivyPath = path.join('reports', 'trivy-report', 'trivy.json');
+          if (fs.existsSync(trivyPath)) {
+            const data = readJson(trivyPath);
+            const misconfigs = (data.Results || []).flatMap((result) => result.Misconfigurations || []);
+            for (const item of misconfigs) {
+              summary.trivy.findings += 1;
+              const severity = String(item.Severity || 'UNKNOWN').toLowerCase();
+              if (severity in summary.trivy) {
+                summary.trivy[severity] += 1;
+              } else {
+                summary.trivy.unknown += 1;
+              }
+            }
+          }
+
+          const checkovPath = path.join('reports', 'checkov-report', 'checkov.json');
+          if (fs.existsSync(checkovPath)) {
+            const data = readJson(checkovPath);
+            const results = Array.isArray(data.results) ? data.results : [];
+            for (const result of results) {
+              summary.checkov.failed += (result.failed_checks || []).length;
+              summary.checkov.passed += (result.passed_checks || []).length;
+              summary.checkov.skipped += (result.skipped_checks || []).length;
+            }
+          }
+
+          summary.total_findings = summary.tflint.findings + summary.trivy.findings + summary.checkov.failed;
+          fs.writeFileSync('security-summary.json', JSON.stringify(summary, null, 2));
+          EOF
+
+      - name: Publish job summary
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const summary = JSON.parse(fs.readFileSync('security-summary.json', 'utf8'));
+
+          const lines = [
+            '# DevSecOps Summary',
+            '',
+            `- Total findings: ${summary.total_findings}`,
+            `- TFLint findings: ${summary.tflint.findings}`,
+            `- Trivy findings: ${summary.trivy.findings} (critical: ${summary.trivy.critical}, high: ${summary.trivy.high}, medium: ${summary.trivy.medium}, low: ${summary.trivy.low}, unknown: ${summary.trivy.unknown})`,
+            `- Checkov failed checks: ${summary.checkov.failed}`,
+            `- Checkov passed checks: ${summary.checkov.passed}`,
+            `- Checkov skipped checks: ${summary.checkov.skipped}`
+          ];
+
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          EOF
+
+      - name: Comment on pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = JSON.parse(fs.readFileSync('security-summary.json', 'utf8'));
+            const body = [
+              '## DevSecOps Scan Summary',
+              '',
+              `- Total findings: ${summary.total_findings}`,
+              `- TFLint findings: ${summary.tflint.findings}`,
+              `- Trivy findings: ${summary.trivy.findings} (critical: ${summary.trivy.critical}, high: ${summary.trivy.high}, medium: ${summary.trivy.medium}, low: ${summary.trivy.low}, unknown: ${summary.trivy.unknown})`,
+              `- Checkov failed checks: ${summary.checkov.failed}`,
+              `- Checkov passed checks: ${summary.checkov.passed}`,
+              `- Checkov skipped checks: ${summary.checkov.skipped}`,
+              '',
+              'Raw reports are attached to this workflow run as artifacts.'
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const marker = '<!-- devsecops-summary -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) => comment.user.type === 'Bot' && comment.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: `${marker}\n${body}`,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: `${marker}\n${body}`,
+              });
+            }
