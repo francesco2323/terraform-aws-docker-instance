@@ -89,6 +89,7 @@ terraform-aws-docker-instance/
 - `.github/workflows/conventional-commits.yml`: validates commit messages and PR titles.
 - `.github/workflows/release.yml`: runs semantic-release on the main branch.
 - `.github/workflows/renovate.yml`: validates the Renovate configuration.
+- `.github/workflows/pr-review-report.yml`: aggregates check results from all PR workflows and posts one sticky pull request report with totals and per-tool status.
 - `.github/CODEOWNERS`: defines the default reviewers/owners for repository paths.
 - `renovate.json`: configures automated dependency update pull requests.
 
