@@ -1,21 +1,21 @@
 output "instance_ids" {
   description = "IDs of created EC2 instances."
-  value       = aws_instance.this[*].id
+  value       = concat(aws_instance.with_created_security_group[*].id, aws_instance.with_existing_security_group[*].id)
 }
 
 output "instance_public_ips" {
   description = "Public IPs of created EC2 instances."
-  value       = aws_instance.this[*].public_ip
+  value       = concat(aws_instance.with_created_security_group[*].public_ip, aws_instance.with_existing_security_group[*].public_ip)
 }
 
 output "instance_private_ips" {
   description = "Private IPs of created EC2 instances."
-  value       = aws_instance.this[*].private_ip
+  value       = concat(aws_instance.with_created_security_group[*].private_ip, aws_instance.with_existing_security_group[*].private_ip)
 }
 
 output "instance_arns" {
   description = "ARNs of created EC2 instances."
-  value       = aws_instance.this[*].arn
+  value       = concat(aws_instance.with_created_security_group[*].arn, aws_instance.with_existing_security_group[*].arn)
 }
 
 output "security_group_id" {

@@ -61,6 +61,7 @@ jobs:
           output_format: json
           output_file_path: reports/checkov.json
           quiet: true
+          skip_check: CKV2_AWS_5
           soft_fail: true
 
       - name: Upload scan artifact

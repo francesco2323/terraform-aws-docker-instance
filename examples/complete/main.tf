@@ -23,7 +23,7 @@ module "docker_instance" {
   server_name                 = "docker-complete-host"
   ingress_ports               = [22, 80, 443, 8080]
   create_security_group       = true
-  associate_public_ip_address = true
+  associate_public_ip_address = false
 
   common_tags = {
     Environment = "dev"

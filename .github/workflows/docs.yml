@@ -6,6 +6,9 @@ name: Docs
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   terraform-docs:
     runs-on: ubuntu-latest
