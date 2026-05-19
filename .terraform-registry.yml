@@ -1,0 +1,4 @@
+version: 1
+metadata:
+  display_name: AWS Docker Instance Module
+  description: Production-grade EC2 Docker instance module with secure defaults and CI guardrails.

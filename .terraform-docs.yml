@@ -1,0 +1,29 @@
+formatter: markdown table
+header-from: README_HEADER.md
+sections:
+  show:
+    - requirements
+    - providers
+    - resources
+    - inputs
+    - outputs
+content: |-
+  {{ .Header }}
+
+  ## Usage
+
+  ```hcl
+  module "docker_instance" {
+    source   = "francesco2323/docker-instance/aws"
+    key_name = "my-keypair"
+  }
+  ```
+
+  {{ .Inputs }}
+  {{ .Outputs }}
+  {{ .Resources }}
+  {{ .Requirements }}
+  {{ .Providers }}
+sort:
+  enabled: true
+  by: name

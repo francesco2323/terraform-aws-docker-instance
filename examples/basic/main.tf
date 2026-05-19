@@ -8,3 +8,13 @@ terraform {
     }
   }
 }
+
+provider "aws" {
+  region = var.aws_region
+}
+
+module "docker_instance" {
+  source = "../../"
+
+  key_name = var.key_name
+}

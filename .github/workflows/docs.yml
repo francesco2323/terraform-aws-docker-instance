@@ -1,0 +1,28 @@
+name: Docs
+
+"on":
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup terraform-docs
+        uses: terraform-docs/gh-actions@v1.3.0
+        with:
+          working-dir: .
+          config-file: .terraform-docs.yml
+          output-file: README.md
+          output-method: inject
+          git-push: "false"
+
+      - name: Verify README is up to date
+        run: git diff --exit-code README.md
