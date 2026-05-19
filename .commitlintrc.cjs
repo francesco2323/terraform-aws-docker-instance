@@ -1,5 +1,8 @@
 module.exports = {
   extends: ["@commitlint/config-conventional"],
+  ignores: [
+    (message) => /^Initial plan$/i.test((message || "").trim())
+  ],
   rules: {
     "type-enum": [
       2,
